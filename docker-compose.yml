@@ -1,0 +1,118 @@
+version: "3.6"
+
+
+networks:
+  faust_test:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.16.58.0/24
+
+volumes:
+  zookeeper-data:
+  kafka-data:
+
+services:
+  consumer_service:
+    container_name: consumer_service
+    hostname: consumer_service
+    build:
+      dockerfile: consumer/Dockerfile
+      context: .
+    networks:
+      - faust_test
+    ports:
+      - "6666:6666"
+    depends_on:
+      - kafka
+    environment:
+      - ASGI_WORKERS=1
+      - ASGI_WORKERS_PER_CORE=1
+
+  producer_consumer_service:
+    container_name: producer_consumer_service
+    hostname: producer_consumer_service
+    build:
+      dockerfile: poducer_consumer/Dockerfile
+      context: .
+    networks:
+      - faust_test
+    ports:
+      - "6669:6669"
+    depends_on:
+      - kafka
+    environment:
+      - ASGI_WORKERS=1
+      - ASGI_WORKERS_PER_CORE=1
+      - EXCEPTION_ON_RAISE_MESSAGE=False
+
+  producer_service:
+    container_name: producer_service
+    hostname: producer_service
+    build:
+      dockerfile: producer/Dockerfile
+      context: .
+    networks:
+      - faust_test
+    ports:
+      - "6667:6667"
+    depends_on:
+      - kafka
+    environment:
+      - ASGI_WORKERS=1
+      - ASGI_WORKERS_PER_CORE=1
+      - EXCEPTION_ON_RAISE_MESSAGE=False
+
+  zookeeper:
+    image: 'bitnami/zookeeper:3'
+    container_name: zookeeper
+    hostname: zookeeper
+    networks:
+      - faust_test
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper-data:/bitnami
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+
+  kafka:
+    image: 'bitnami/kafka:2'
+    container_name: kafka
+    hostname: kafka
+    environment:
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_ZOOKEEPER_TLS_VERIFY_HOSTNAME=false
+      - KAFKA_CFG_BROKER_ID=1
+      - KAFKA_ADVERTISED_HOST_NAME=kafka
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CLIENT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=CLIENT://:9092,EXTERNAL://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=CLIENT://kafka:9092,EXTERNAL://localhost:9093
+      - KAFKA_INTER_BROKER_LISTENER_NAME=CLIENT
+    networks:
+      - faust_test
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+      - "29092:29092"
+    volumes:
+      - kafka-data:/bitnami
+    depends_on:
+      - zookeeper
+
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    container_name: kafdrop
+    restart: unless-stopped
+    environment:
+      - KAFKA_BROKERCONNECT=kafka:9092
+      - JVM_OPTS=-Xms32M -Xmx64M
+      - SERVER_SERVLET_CONTEXTPATH=/
+    networks:
+      - faust_test
+    ports:
+      - "9000:9000"
+    depends_on:
+      - kafka
